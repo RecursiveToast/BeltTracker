@@ -37,16 +37,28 @@ class WearingTime(models.Model):
         guertel_info = f" mit {self.chastitybelttype}" if self.chastitybelttype else ""
         return f"Tragezeit von {self.starttime} bis {self.endtime or 'jetzt'}{guertel_info}"
 
-class Maintenance(models.Model):
-    maintenancetypes = [
-        ('cleaning', 'Reinigung')
+class Event(models.Model):
+    eventtypes = [
+        ('orgasm', 'Orgasmus'),
+        ('injury', 'Verletzung'),
+        ('cleaning', 'Reinigung'),
+        ('basiccleaning', 'Grundreinigung'),
+        ('adjustment', 'Einstellung')
     ]
     date = models.DateTimeField()
+    description = models.TextField(blank=True)
     type = models.CharField(
         max_length=20,
-        choices=maintenancetypes,
+        choices=eventtypes,
         default='cleaning'  # Standardwert
+    )
+    belt = models.ForeignKey(  # Zuordnung zu Gürtel (nicht zu WearingTime)
+        'ChastityBeltType',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='events'
     )
 
     def __str__(self):
-        return f"{self.type}"
+        return f"{self.get_type_display()} am {self.date.strftime('%Y-%m-%d %H:%M')}"

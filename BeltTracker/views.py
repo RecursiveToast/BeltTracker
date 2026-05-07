@@ -163,3 +163,42 @@ def update_wearing_time(request, wearing_time_id):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from .models import Event, WearingTime
+import json
+
+@csrf_exempt  # Nur für Tests! Im Produktivmodus CSRF-Token verwenden.
+def add_event(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Nur POST-Anfragen sind erlaubt.'})
+
+    try:
+        data = json.loads(request.body)
+        event_type = data.get('type')
+        event_date_str = data.get('date')
+        description = data.get('description', '')
+
+        # Datum parsen
+        event_date = timezone.datetime.fromisoformat(event_date_str.replace('Z', '+00:00'))
+
+        # Ereignis erstellen
+        event = Event.objects.create(
+            type=event_type,
+            date=event_date,
+            description=description
+        )
+
+        # Ereignis dem aktuellen Tragevorgang zuordnen (falls einer aktiv ist)
+        currently_worn = WearingTime.objects.filter(endtime__isnull=True).first()
+        if currently_worn:
+            # Hier könntest du eine Beziehung herstellen, z. B. über ein ForeignKey-Feld in Event
+            # Beispiel: event.wearing_time = currently_worn
+            # event.save()
+            pass
+
+        return JsonResponse({'success': True, 'event_id': event.id})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

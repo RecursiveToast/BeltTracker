@@ -15,11 +15,13 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from BeltTracker import views
+from BeltTracker.views import add_event
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', include('BeltTracker.urls')),  # Einbindung der App-URLs
     path('', views.belt_list, name='belt_list'),
     path('belts/add/', views.add_belt, name='add_belt'),
     path('belts/delete/<int:belt_id>/', views.delete_belt, name='delete_belt'),
@@ -29,4 +31,5 @@ urlpatterns = [
     path('wearing-times/start/', views.start_wearing_time, name='start_wearing_time'),
     path('wearing-times/end/<int:wearing_time_id>/', views.end_wearing_time, name='end_wearing_time'),
     path('wearing-times/update/<int:wearing_time_id>/', views.update_wearing_time, name='update_wearing_time'),
+    path('events/add/', add_event, name='add_event'),
 ]
