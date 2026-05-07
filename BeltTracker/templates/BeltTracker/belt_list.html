@@ -1,0 +1,115 @@
+{% extends "BeltTracker/base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Gürtelmodelle{% endblock %}
+
+{% block content %}
+    <h1>Gürtelmodelle</h1>
+    <a href="{% url 'add_belt' %}" class="button primary-button">Neues Gürtelmodell hinzufügen</a>
+
+    <!-- Modal für Löschbestätigung -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <h2>Gürtelmodell löschen</h2>
+            <p id="modalMessage">Möchtest du wirklich <strong id="beltName"></strong> löschen?</p>
+            <form id="deleteForm" method="post">
+                {% csrf_token %}
+                <div class="modal-buttons">
+                    <button type="submit" class="button delete-button">Ja, löschen</button>
+                    <button type="button" class="button cancel-button" onclick="closeModal()">Abbrechen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Hersteller</th>
+                <th>Material</th>
+                <th>Beschreibung</th>
+                <th>Gesamttragezeit</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for belt in belts %}
+            <tr class="{% if belt.id == currently_worn_belt.id %}currently-worn{% endif %}">
+                <td>
+                    {{ belt.name }}
+                    {% if belt.id == currently_worn_belt.id %}
+                        (<span id="currentWearingTime"
+                               class="realtime-duration"
+                               data-start-time="{{ currently_worn_start_time|date:'Y-m-d\TH:i' }}">{{ currently_worn_duration }}</span>)
+                    {% endif %}
+                </td>
+                <td>{{ belt.manufacturer }}</td>
+                <td>{{ belt.material }}</td>
+                <td>{{ belt.description }}</td>
+                <td>{{ belt_total_wearing_times|get_item:belt.id|default:"0 Tage, 0 Std., 0 Min." }}</td>
+                <td>
+                    <div class="dropdown">
+                        <button class="button actions-button">Aktionen ▼</button>
+                        <div class="dropdown-content">
+                            {% if belt.id == currently_worn_belt.id %}
+                                <a href="{% url 'end_wearing_time' currently_worn_id %}">Ablegen</a>
+                            {% else %}
+                                <a href="{% url 'start_wearing_time' %}?belt_id={{ belt.id }}">Anlegen</a>
+                            {% endif %}
+                            <a href="#" onclick="openModal('{{ belt.id }}', '{{ belt.name }}')">Löschen</a>
+                            <a href="#">Wartung</a>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        // Modal öffnen und Daten setzen
+        function openModal(beltId, beltName) {
+            document.getElementById('beltName').textContent = beltName;
+            document.getElementById('deleteForm').action = `/belts/delete/${beltId}/`;
+            document.getElementById('deleteModal').style.display = 'block';
+        }
+
+        // Modal schließen
+        function closeModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+
+        // Modal schließen, wenn außerhalb geklickt wird
+        window.onclick = function(event) {
+            const modal = document.getElementById('deleteModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        // Echtzeit-Timer für aktuell getragenen Gürtel
+        const currentWearingTimeElement = document.getElementById('currentWearingTime');
+        if (currentWearingTimeElement) {
+            const startTimeStr = currentWearingTimeElement.dataset.startTime;
+            const startTime = new Date(startTimeStr + (startTimeStr.includes('+') ? '' : '+02:00'));
+
+            function updateWearingTime() {
+                const now = new Date();
+                const diff = now - startTime;
+
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+                const durationStr = `${days} Tage, ${hours} Std., ${minutes} Min., ${seconds} Sek.`;
+                currentWearingTimeElement.textContent = durationStr;
+            }
+
+            setInterval(updateWearingTime, 1000);
+            updateWearingTime();
+        }
+    </script>
+{% endblock %}

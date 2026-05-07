@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gürtelmodell löschen</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .button { padding: 8px 12px; margin: 5px; cursor: pointer; }
+        .delete { background: #f44336; color: white; }
+        .cancel { background: #607d8b; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Gürtelmodell löschen</h1>
+    <p>Möchtest du wirklich <strong>{{ belt.name }}</strong> (Hersteller: {{ belt.manufacturer }}) löschen?</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="button delete">Ja, löschen</button>
+        <a href="{% url 'belt_list' %}" class="button cancel">Abbrechen</a>
+    </form>
+</body>
+</html>

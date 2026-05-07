@@ -1,0 +1,189 @@
+{% extends "BeltTracker/base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Tragezeiten{% endblock %}
+
+{% block content %}
+    <h1>Tragezeiten</h1>
+    <a href="{% url 'belt_list' %}" class="button primary-button">Zurück zu Gürtelmodellen</a>
+
+    <!-- Formular zum Starten einer neuen Tragezeit -->
+    <h2>Neue Tragezeit starten</h2>
+    <form method="post" action="{% url 'start_wearing_time' %}">
+        {% csrf_token %}
+        <label for="chastitybelttype">Gürtelmodell:</label>
+        <select name="chastitybelttype" id="chastitybelttype">
+            <option value="">-- Kein Gürtel --</option>
+            {% for belt in belts %}
+                <option value="{{ belt.id }}">{{ belt.name }} ({{ belt.manufacturer }})</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="button start-button">Starten</button>
+    </form>
+
+    <h2>Tragezeiten-Übersicht</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Gürtelmodell</th>
+                <th>Startzeit</th>
+                <th>Endzeit</th>
+                <th>Dauer</th>
+                <th>Aktionen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for wt in wearing_times %}
+            <tr class="{% if not wt.endtime %}running{% endif %}">
+                <td>
+                    {% if wt.chastitybelttype %}
+                        {{ wt.chastitybelttype.name }} ({{ wt.chastitybelttype.manufacturer }})
+                    {% else %}
+                        Kein Gürtel
+                    {% endif %}
+                </td>
+                <td>
+                    <span
+                        class="editable-time"
+                        data-field="starttime"
+                        data-wt-id="{{ wt.id }}"
+                        data-original-value="{{ wt.starttime|date:'Y-m-d\TH:i' }}"
+                        onclick="makeEditable(this)"
+                    >
+                        {{ wt.starttime|date:'Y-m-d H:i' }}
+                    </span>
+                </td>
+                <td>
+                    {% if wt.endtime %}
+                        <span
+                            class="editable-time"
+                            data-field="endtime"
+                            data-wt-id="{{ wt.id }}"
+                            data-original-value="{{ wt.endtime|date:'Y-m-d\TH:i' }}"
+                            onclick="makeEditable(this)"
+                        >
+                            {{ wt.endtime|date:'Y-m-d H:i' }}
+                        </span>
+                    {% else %}
+                        Läuft noch
+                    {% endif %}
+                </td>
+                <td>
+                    {% if wt.endtime %}
+                        <span class="duration-display" id="duration-{{ wt.id }}">
+                            {{ wt.duration_str }}
+                        </span>
+                    {% else %}
+                        <span class="realtime-duration" id="duration-{{ wt.id }}"
+                              data-start-time="{{ wt.starttime|date:'Y-m-d H:i:s' }}"></span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not wt.endtime %}
+                        <form method="post" action="{% url 'end_wearing_time' wt.id %}" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="button end-button">Beenden</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        // Echtzeit-Timer für laufende Tragezeiten (mit Zeitzonen-Korrektur)
+        document.addEventListener('DOMContentLoaded', function() {
+            // 1. Echtzeit-Timer für laufende Tragezeiten
+            const durationElements = document.querySelectorAll('.realtime-duration[data-start-time]');
+            durationElements.forEach(function(element) {
+                const startTimeStr = element.dataset.startTime;
+                const startTime = new Date(startTimeStr + (startTimeStr.includes('+') ? '' : '+02:00'));
+
+                function updateDuration() {
+                    const now = new Date();
+                    const diff = now - startTime;
+
+                    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+                    const durationStr = `${days} Tage, ${hours} Std., ${minutes} Min., ${seconds} Sek.`;
+                    element.textContent = durationStr;
+                }
+
+                setInterval(updateDuration, 1000);
+                updateDuration();
+            });
+
+            // 2. Bearbeitbare Felder für Start-/Endzeiten
+            window.makeEditable = function(element) {
+                const originalValue = element.dataset.originalValue;
+                const field = element.dataset.field;
+                const wtId = element.dataset.wtId;
+
+                // Erstelle ein Eingabefeld
+                const input = document.createElement('input');
+                input.type = 'datetime-local';
+                input.value = originalValue;  // Format: YYYY-MM-DDTHH:MM
+                input.className = 'time-input';
+                input.step = '1';  // Erlaubt Minuten-Eingabe
+
+                // Ersetze den Span durch das Eingabefeld
+                element.innerHTML = '';
+                element.appendChild(input);
+                input.focus();
+
+                // Funktion zum Speichern der Änderungen
+                const saveEdit = function() {
+                    const newValue = input.value.replace('T', ' ');  // Konvertiere zurück zu Y-m-d H:i
+                    if (newValue !== originalValue.replace('T', ' ')) {
+                        fetch(`/wearing-times/update/${wtId}/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRFToken': '{{ csrf_token }}'
+                            },
+                            body: `field=${field}&value=${encodeURIComponent(newValue)}`
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                element.dataset.originalValue = newValue.replace(' ', 'T');
+                                element.innerHTML = newValue;
+                                // Aktualisiere die Dauer (falls Endzeit geändert wurde)
+                                if (field === 'endtime') {
+                                    const durationElement = document.getElementById(`duration-${wtId}`);
+                                    if (durationElement) {
+                                        durationElement.textContent = data.new_duration;
+                                    }
+                                }
+                            } else {
+                                alert('Fehler beim Speichern: ' + data.error);
+                                element.innerHTML = originalValue.replace('T', ' ');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            element.innerHTML = originalValue.replace('T', ' ');
+                        });
+                    } else {
+                        element.innerHTML = originalValue.replace('T', ' ');
+                    }
+                };
+
+                // Speichern bei Enter oder Fokusverlust
+                input.addEventListener('blur', saveEdit);
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        saveEdit();
+                    } else if (e.key === 'Escape') {
+                        element.innerHTML = originalValue.replace('T', ' ');
+                    }
+                });
+            };
+        });
+    </script>
+{% endblock %}
