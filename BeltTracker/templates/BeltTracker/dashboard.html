@@ -1,0 +1,133 @@
+{% extends "BeltTracker/base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+    <h1>Dashboard</h1>
+
+    <div class="dashboard-grid">
+        <!-- Aktueller Gürtel -->
+        <div class="dashboard-card">
+            <h2>🔹 Aktueller Gürtel</h2>
+            {% if current_belt %}
+                <p><strong>{{ current_belt.name }}</strong> ({{ current_belt.manufacturer }})</p>
+                <p>Material: {{ current_belt.material }}</p>
+                <p>Beschreibung: {{ current_belt.description }}</p>
+            {% else %}
+                <p>Kein Gürtel wird aktuell getragen.</p>
+            {% endif %}
+        </div>
+
+        <!-- Aktuelle Tragezeit (Echtzeit) -->
+        <div class="dashboard-card">
+            <h2>⏱️ Aktuelle Tragezeit</h2>
+            {% if current_duration %}
+                <p id="dashboardCurrentDuration" class="realtime-duration"
+                   data-start-time="{{ currently_worn_start_time|date:'Y-m-d\TH:i' }}">
+                    {{ current_duration|format_duration }}
+                </p>
+            {% else %}
+                <p>Keine aktive Tragezeit.</p>
+            {% endif %}
+        </div>
+
+        <!-- Lieblingsgürtel -->
+        <div class="dashboard-card">
+            <h2>⭐ Lieblingsgürtel</h2>
+            {% if favorite_belt %}
+                <p><strong>{{ favorite_belt.name }}</strong></p>
+                <p>Gesamttragezeit: {{ favorite_belt_duration|format_duration }}</p>
+            {% else %}
+                <p>Noch keine Daten verfügbar.</p>
+            {% endif %}
+        </div>
+
+        <!-- Letzte Reinigung -->
+        <div class="dashboard-card">
+            <h2>🧼 Letzte Reinigung</h2>
+            {% if last_cleaning %}
+                <p>{{ last_cleaning|date:'d. F Y, H:i' }}</p>
+            {% elif current_belt %}
+                <p>Keine Reinigung für <strong>{{ current_belt.name }}</strong> aufgezeichnet.</p>
+            {% else %}
+                <p>Kein Gürtel ausgewählt.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Kreisdiagramm -->
+    <div class="dashboard-chart-container">
+        <h2>📊 Tragezeiten-Verteilung</h2>
+        <canvas id="wearingTimeChart" width="400" height="300"></canvas>
+    </div>
+
+    <script>
+        // Echtzeit-Timer für aktuelle Tragezeit im Dashboard
+        const dashboardCurrentDurationElement = document.getElementById('dashboardCurrentDuration');
+        if (dashboardCurrentDurationElement) {
+            const startTimeStr = dashboardCurrentDurationElement.dataset.startTime;
+            const startTime = new Date(startTimeStr + (startTimeStr.includes('+') ? '' : '+02:00'));
+
+            function updateDashboardDuration() {
+                const now = new Date();
+                const diff = now - startTime;
+
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+                const durationStr = `${days} Tage, ${hours} Std., ${minutes} Min., ${seconds} Sek.`;
+                dashboardCurrentDurationElement.textContent = durationStr;
+            }
+
+            setInterval(updateDashboardDuration, 1000);
+            updateDashboardDuration();
+        }
+
+        // Kreisdiagramm mit Chart.js
+        const chartLabels = {{ chart_labels|safe }};
+        const chartData = {{ chart_data|safe }};
+        const chartColors = {{ chart_colors|safe }};
+
+        if (chartLabels.length > 0) {
+            const ctx = document.getElementById('wearingTimeChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        data: chartData,
+                        backgroundColor: chartColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    const seconds = value;
+                                    const days = Math.floor(seconds / (3600 * 24));
+                                    const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+                                    const minutes = Math.floor((seconds % 3600) / 60);
+                                    return `${label}: ${days} Tage, ${hours} Std., ${minutes} Min. (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+{% endblock %}

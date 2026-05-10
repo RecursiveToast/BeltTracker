@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}BeltTracker{% endblock %}</title>
-    {% load static %}  <!-- Static-Tag laden -->
+    {% load static %}
     <link rel="stylesheet" href="{% static 'BeltTracker/css/styles.css' %}">
+    <!-- NEU: Chart.js für Dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -17,6 +19,8 @@
                 <ul>
                     <li><a href="{% url 'belt_list' %}" class="{% if request.resolver_match.url_name == 'belt_list' %}active{% endif %}">Gürtelmodelle</a></li>
                     <li><a href="{% url 'wearing_time_list' %}" class="{% if request.resolver_match.url_name == 'wearing_time_list' %}active{% endif %}">Tragezeiten</a></li>
+                    <!-- NEU: Dashboard-Link -->
+                    <li><a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a></li>
                 </ul>
             </nav>
         </div>
@@ -35,7 +39,9 @@
                         <strong>{{ currently_worn_belt.name }}</strong>
                         (seit {{ currently_worn_start_time|date:'Y-m-d H:i' }})
                         <span id="beltBarWearingTime" class="realtime-duration"
-                            data-start-time="{{ currently_worn_start_time|date:'Y-m-d\TH:i' }}"></span>
+                              data-start-time="{{ currently_worn_start_time|date:'Y-m-d\TH:i:s' }}">
+                            | Tragezeit: {{ current_wearing_time|default:"0 Tage, 0 Std., 0 Min." }}
+                        </span>
                     </p>
                 {% else %}
                     <p>Kein Gürtel wird aktuell getragen.</p>
@@ -45,6 +51,7 @@
             <!-- Ereignis-Hinzufügen-Knopf -->
             <div class="add-event-container">
                 <button id="addEventButton" class="add-event-button">Ereignis hinzufügen</button>
+                <!-- Rest bleibt gleich -->
 
                 <!-- Dropdown-Menü für Ereignistypen -->
                 <ul id="eventDropdown" class="event-dropdown">
@@ -53,13 +60,14 @@
                     {% endfor %}
                 </ul>
 
-                <!-- Modal für Ereignis-Eingabe -->
+                <!-- Modal für Ereignis-Eingabe (NEU: Bearbeitungsmodus) -->
                 <div id="eventModal" class="event-modal">
                     <div class="event-modal-content">
                         <h2 id="eventModalTitle">Ereignis hinzufügen</h2>
                         <form id="eventForm">
                             {% csrf_token %}
                             <input type="hidden" id="eventTypeInput" name="type" value="">
+                            <input type="hidden" id="eventIdInput" name="event_id" value="">  <!-- NEU: Event-ID für Bearbeitung -->
                             <div>
                                 <label for="eventDate">Datum und Uhrzeit:</label>
                                 <input type="datetime-local" id="eventDate" name="date" required>
@@ -67,6 +75,15 @@
                             <div>
                                 <label for="eventDescription">Beschreibung (optional):</label>
                                 <textarea id="eventDescription" name="description" rows="3"></textarea>
+                            </div>
+                            <div>
+                                <label for="eventBelt">Gürtel (optional):</label>
+                                <select id="eventBelt" name="belt_id">
+                                    <option value="">-- Kein Gürtel --</option>
+                                    {% for belt in belts %}
+                                        <option value="{{ belt.id }}">{{ belt.name }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                             <div class="modal-buttons">
                                 <button type="button" class="save-button" onclick="saveEvent()">Speichern</button>
@@ -81,156 +98,133 @@
 
     <!-- JavaScript für Echtzeit-Timer in der Belt Bar -->
     <script>
-        // Ereignistypen aus dem Modell (wird später dynamisch geladen)
-    const eventTypes = [
-        ['orgasm', 'Orgasmus'],
-        ['injury', 'Verletzung'],
-        ['cleaning', 'Reinigung'],
-        ['basiccleaning', 'Grundreinigung'],
-        ['adjustment', 'Einstellung']
-    ];
+        // Ereignistypen aus dem Modell
+        const eventTypes = [
+            ['orgasm', 'Orgasmus'],
+            ['injury', 'Verletzung'],
+            ['cleaning', 'Reinigung'],
+            ['basiccleaning', 'Grundreinigung'],
+            ['adjustment', 'Einstellung']
+        ];
 
-    // Dropdown-Menü für Ereignisse öffnen/schließen
-    document.getElementById('addEventButton').addEventListener('click', function() {
-        const dropdown = document.getElementById('eventDropdown');
-        dropdown.classList.toggle('show');
-    });
+        // NEU: Aktuelle Gürtel für Event-Zuordnung
+        const belts = [
+            {% for belt in belts %}
+                { id: {{ belt.id }}, name: "{{ belt.name }}" }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
 
-    // Modal für Ereignis-Eingabe öffnen
-    function openEventModal(eventType, eventTypeName) {
-        closeEventDropdown();
-        document.getElementById('eventTypeInput').value = eventType;
-        document.getElementById('eventModalTitle').textContent = `Ereignis '${eventTypeName}' anpassen`;
-        document.getElementById('eventDate').value = new Date().toISOString().slice(0, 16); // Aktuelles Datum/Uhrzeit
-        document.getElementById('eventModal').classList.add('show');
-    }
-
-    // Modal schließen
-    function closeEventModal() {
-        document.getElementById('eventModal').classList.remove('show');
-        document.getElementById('eventForm').reset();
-    }
-
-    // Dropdown schließen, wenn außerhalb geklickt wird
-    function closeEventDropdown() {
-        document.getElementById('eventDropdown').classList.remove('show');
-    }
-
-    // Ereignis speichern
-    function saveEvent() {
-        const form = document.getElementById('eventForm');
-        const formData = new FormData(form);
-        const eventData = {
-            type: formData.get('type'),
-            date: formData.get('date'),
-            description: formData.get('description') || ''
-        };
-
-        // Hier würde normalerweise ein AJAX-Call an den Server gehen
-        // Fürs Erste zeigen wir nur eine Bestätigung an
-        alert(`Ereignis gespeichert: ${eventData.type} am ${eventData.date}`);
-        closeEventModal();
-
-        // TODO: AJAX-Call an den Server, um das Ereignis zu speichern
-        // fetch('/events/add/', {
-        //     method: 'POST',
-        //     headers: {
-        //         'Content-Type': 'application/json',
-        //         'X-CSRFToken': '{{ csrf_token }}'
-        //     },
-        //     body: JSON.stringify(eventData)
-        // })
-        // .then(response => response.json())
-        // .then(data => {
-        //     if (data.success) {
-        //         alert('Ereignis gespeichert!');
-        //         closeEventModal();
-        //         // Optional: Seite neu laden oder Ereignis zur Liste hinzufügen
-        //     } else {
-        //         alert('Fehler: ' + data.error);
-        //     }
-        // })
-        // .catch(error => {
-        //     console.error('Error:', error);
-        //     alert('Fehler beim Speichern des Ereignisses.');
-        // });
-    }
-
-    // Dropdown schließen, wenn außerhalb geklickt wird
-    window.addEventListener('click', function(event) {
-        const dropdown = document.getElementById('eventDropdown');
-        const button = document.getElementById('addEventButton');
-
-        if (!button.contains(event.target) && !dropdown.contains(event.target)) {
-            closeEventDropdown();
-        }
-    });
-
-    // Modal schließen, wenn außerhalb geklickt wird
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('eventModal');
-        if (event.target === modal) {
-            closeEventModal();
-        }
-    });
-
-    // Echtzeit-Timer für die Belt Bar
-    const beltBarWearingTimeElement = document.getElementById('beltBarWearingTime');
-    if (beltBarWearingTimeElement) {
-        const startTimeStr = beltBarWearingTimeElement.dataset.startTime;
-        const startTime = new Date(startTimeStr + (startTimeStr.includes('+') ? '' : '+02:00'));
-
-        function updateBeltBarWearingTime() {
-            const now = new Date();
-            const diff = now - startTime;
-
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-            const durationStr = ` | Tragezeit: ${days} Tage, ${hours} Std., ${minutes} Min., ${seconds} Sek.`;
-            beltBarWearingTimeElement.textContent = durationStr;
-        }
-
-        setInterval(updateBeltBarWearingTime, 1000);
-        updateBeltBarWearingTime();
-    }
-
-    // Ereignis speichern
-    function saveEvent() {
-        const form = document.getElementById('eventForm');
-        const formData = new FormData(form);
-        const eventData = {
-            type: formData.get('type'),
-            date: formData.get('date'),
-            description: formData.get('description') || ''
-        };
-
-        fetch('/events/add/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
-            body: JSON.stringify(eventData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Ereignis gespeichert!');
-                closeEventModal();
-                // Optional: Seite neu laden, um das Ereignis anzuzeigen
-                location.reload();
-            } else {
-                alert('Fehler: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Fehler beim Speichern des Ereignisses.');
+        // Dropdown-Menü für Ereignisse öffnen/schließen
+        document.getElementById('addEventButton').addEventListener('click', function() {
+            const dropdown = document.getElementById('eventDropdown');
+            dropdown.classList.toggle('show');
         });
-    }
+
+        // Modal für Ereignis-Eingabe öffnen (NEU: Bearbeitungsmodus)
+        function openEventModal(eventType, eventTypeName, eventId = null) {
+            closeEventDropdown();
+            document.getElementById('eventTypeInput').value = eventType;
+            document.getElementById('eventModalTitle').textContent = eventId ?
+                `Ereignis '${eventTypeName}' bearbeiten` :
+                `Ereignis '${eventTypeName}' hinzufügen`;
+            document.getElementById('eventIdInput').value = eventId || '';
+            document.getElementById('eventDate').value = new Date().toISOString().slice(0, 16);
+            document.getElementById('eventDescription').value = '';
+            document.getElementById('eventModal').classList.add('show');
+        }
+
+        // Modal schließen
+        function closeEventModal() {
+            document.getElementById('eventModal').classList.remove('show');
+            document.getElementById('eventForm').reset();
+        }
+
+        // Dropdown schließen, wenn außerhalb geklickt wird
+        function closeEventDropdown() {
+            document.getElementById('eventDropdown').classList.remove('show');
+        }
+
+        // Ereignis speichern (NEU: Bearbeitung oder Erstellen)
+        function saveEvent() {
+            const form = document.getElementById('eventForm');
+            const formData = new FormData(form);
+            const eventId = formData.get('event_id');
+            const eventData = {
+                type: formData.get('type'),
+                date: formData.get('date'),
+                description: formData.get('description') || '',
+                belt_id: formData.get('belt_id') || null
+            };
+
+            const url = eventId ?
+                `/events/edit/${eventId}/` :  // Bearbeiten
+                '/events/add/';               // Neu erstellen
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify(eventData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(eventId ? 'Ereignis aktualisiert!' : 'Ereignis gespeichert!');
+                    closeEventModal();
+                    location.reload();
+                } else {
+                    alert('Fehler: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Fehler beim Speichern des Ereignisses.');
+            });
+        }
+
+        // Dropdown schließen, wenn außerhalb geklickt wird
+        window.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('eventDropdown');
+            const button = document.getElementById('addEventButton');
+
+            if (!button.contains(event.target) && !dropdown.contains(event.target)) {
+                closeEventDropdown();
+            }
+        });
+
+        // Modal schließen, wenn außerhalb geklickt wird
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('eventModal');
+            if (event.target === modal) {
+                closeEventModal();
+            }
+        });
+
+        // Echtzeit-Timer für die Belt Bar (VEREINHEITLICHT)
+        const beltBarWearingTimeElement = document.getElementById('beltBarWearingTime');
+        if (beltBarWearingTimeElement) {
+            const startTimeStr = beltBarWearingTimeElement.dataset.startTime;
+            const startTime = new Date(startTimeStr + (startTimeStr.includes('+') ? '' : '+02:00'));
+
+            function updateBeltBarWearingTime() {
+                const now = new Date();
+                const diff = now - startTime;
+
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+                // VEREINHEITLICHTES FORMAT: " | Tragezeit: X Tage, Y Std., Z Min., A Sek."
+                const durationStr = ` | Tragezeit: ${days} Tage, ${hours} Std., ${minutes} Min., ${seconds} Sek.`;
+                beltBarWearingTimeElement.textContent = durationStr;
+            }
+
+            setInterval(updateBeltBarWearingTime, 1000);
+            updateBeltBarWearingTime();
+        }
     </script>
 </body>
 </html>

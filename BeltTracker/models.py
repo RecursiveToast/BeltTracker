@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Sum
 
 # Create your models here.
 class ChastityBeltType(models.Model):
@@ -6,9 +7,26 @@ class ChastityBeltType(models.Model):
     description = models.TextField(blank=True)
     manufacturer = models.CharField(max_length=256, blank=True)
     material = models.CharField(max_length=256)
+    addons = models.ManyToManyField('ChastityBeltAddon', blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.manufacturer})"
+
+class ChastityBeltAddon(models.Model):
+    ADDON_CHOICES = [
+        ('lock', 'Vorhängeschloss'),
+        ('padlock', 'Zahlenschloss'),
+        # Weitere Addons nach Bedarf
+    ]
+
+    type = models.CharField(
+        max_length=20,
+        choices=ADDON_CHOICES,
+        unique=True  # Verhindert doppelte Addons in der Datenbank
+    )
+
+    def __str__(self):
+        return self.get_type_display()  # Zeigt den lesbaren Namen an (z. B. "PA-Ring")
 
 class WearingTime(models.Model):
     starttime = models.DateTimeField(auto_now_add=True)

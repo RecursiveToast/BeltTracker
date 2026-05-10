@@ -48,7 +48,8 @@
                 <td>{{ belt.manufacturer }}</td>
                 <td>{{ belt.material }}</td>
                 <td>{{ belt.description }}</td>
-                <td>{{ belt_total_wearing_times|get_item:belt.id|default:"0 Tage, 0 Std., 0 Min." }}</td>
+                <!-- NEU: Formatierung mit custom_filters -->
+                <td>{{ belt_total_wearing_times|get_item:belt.id|format_duration }}</td>
                 <td>
                     <div class="dropdown">
                         <button class="button actions-button">Aktionen ▼</button>

@@ -65,6 +65,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'BeltTracker.context_processors.currently_worn_belt',
+                'BeltTracker.context_processors.current_wearing_time',  # NEU
             ],
         },
     },
